@@ -1,9 +1,13 @@
-# config.py
 import os
 import psycopg2
 from psycopg2 import sql
+from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
 from dotenv import load_dotenv
+import json
+from datetime import datetime, date
+from decimal import Decimal
+
 
 # Load environment variables from a .env file
 load_dotenv()
@@ -29,6 +33,15 @@ def get_db_config():
         raise ValueError(f"Missing database configuration for: {', '.join(missing)}")
 
     return config
+
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super(CustomJSONEncoder, self).default(obj)
+
 
 
 class DatabaseSession:
@@ -70,16 +83,19 @@ class DatabaseSession:
             print("Database connection closed.")
 
     @contextmanager
-    def get_cursor(self):
+    def get_cursor(self, cursor_factory=None):
         """
         Provides a context manager for database cursor operations.
+
+        Args:
+            cursor_factory: Optional cursor factory to customize cursor behavior.
 
         Usage:
             with db_session.get_cursor() as cursor:
                 cursor.execute("YOUR QUERY")
         """
         self.connect()
-        cursor = self.connection.cursor()
+        cursor = self.connection.cursor(cursor_factory=cursor_factory)
         try:
             yield cursor
             self.connection.commit()
@@ -91,7 +107,17 @@ class DatabaseSession:
             cursor.close()
 
     def execute_query(self, query, params=None):
-        with self.get_cursor() as cursor:
+        """
+        Executes a SQL query and returns the results as a list of dictionaries.
+
+        Args:
+            query (str): The SQL query to execute.
+            params (tuple or dict, optional): The parameters to pass with the query.
+
+        Returns:
+            list of dict: Query results with column names as keys.
+        """
+        with self.get_cursor(cursor_factory=RealDictCursor) as cursor:
             cursor.execute(query, params)
             try:
                 results = cursor.fetchall()
@@ -101,7 +127,17 @@ class DatabaseSession:
                 return []
 
     def execute_query_one(self, query, params=None):
-        with self.get_cursor() as cursor:
+        """
+        Executes a SQL query and returns a single result as a dictionary.
+
+        Args:
+            query (str): The SQL query to execute.
+            params (tuple or dict, optional): The parameters to pass with the query.
+
+        Returns:
+            dict or None: Single query result with column names as keys or None if no result.
+        """
+        with self.get_cursor(cursor_factory=RealDictCursor) as cursor:
             cursor.execute(query, params)
             try:
                 result = cursor.fetchone()
@@ -110,8 +146,19 @@ class DatabaseSession:
                 # No result to fetch
                 return None
 
-    def execute_select(self, query, params=None):
-        return self.execute_query(query, params)
+    def execute_query_json(self, query, params=None):
+        """
+        Executes a SQL query and returns the results as a JSON string.
+
+        Args:
+            query (str): The SQL query to execute.
+            params (tuple or dict, optional): The parameters to pass with the query.
+
+        Returns:
+            str: JSON-formatted string of the query results.
+        """
+        results = self.execute_query(query, params)
+        return json.dumps(results, cls=CustomJSONEncoder)
 
     def execute_insert(self, query, params=None):
         with self.get_cursor() as cursor:
