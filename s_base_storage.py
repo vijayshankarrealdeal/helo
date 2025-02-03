@@ -24,5 +24,7 @@ def upload_file(
         )
     return response
 
-def download_file():
-    pass
+
+def download_url(client, imageName, folder="basket_images_meme", baskset_name="meme_basket"):
+    response = client.storage.from_(baskset_name).get_public_url(f"{folder}/{imageName}")
+    return response

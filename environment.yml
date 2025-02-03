@@ -5,4 +5,4 @@ dependencies:
   - psycopg2
   - pylint
   - supabase
-  - 
+  - fastapi
